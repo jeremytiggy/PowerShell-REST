@@ -61,6 +61,15 @@ $Global:REST_API_Actions = @{
     }
 }
 
+$Global:REST_API_JSON_ExecuteThirdPartyAction = @'
+{
+  "categoryId": "categoryId",
+  "actionId": "actionId",
+  "context": {
+    "applicationData": "applicationData"
+  }
+}
+'@
 
 Write-Host "[REST_API_Server] Action Categories & Definitions registered. May be overwritten." -ForegroundColor Yellow
 # REST API Data Definitions for Actions ^^^^^^^^^^^^^^^^
@@ -68,6 +77,12 @@ Write-Host "[REST_API_Server] Action Categories & Definitions registered. May be
 # Put your code that performs your desired activity for this plug-in
 function REST_API_Application-Specific-Action {
 	#Overwrite this function with your own function to execute when a valid REST action is received
+	#Example:
+	if ($null -ne $Global:REST_API_clientActionData.context.applicationData) {
+		$Global:REST_API_Action_applicationData = $Global:REST_API_clientActionData.context.applicationData
+		Write-Host "[REST_API_Application-Specific-Action]: applicationData: $($Global:REST_API_Action_applicationData)"
+	}
+	
 	$Global:REST_API_Action_ApplicationDataAvailable = $true
 }
 Write-Host "[REST_API_Server] REST_API_Application-Specific-Action registered. May be overwritten." -ForegroundColor Yellow
