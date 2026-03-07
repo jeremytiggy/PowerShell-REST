@@ -284,7 +284,21 @@ function Convert-ToOriginalType {
 }
 
 # Main Program Loop -------------------------------
-Write-Host "`n[Startup]: Starting communications..." -ForegroundColor White
+# ask if user wants to enable debugging
+if ($Global:REST_Server_Debug -eq $false) {
+	Write-Host "'n[Startup]: Enable Server Debugging Messages?" -ForegroundColor Cyan
+	Write-Host -NoNewLine "[Enter Command (yes|no)]:> "
+	$enableServerDebugging = Read-Host
+	if ($enableServerDebugging -eq 'yes') { $Global:REST_Server_Debug = $true }
+}
+if ($Global:REST_API_Debug -eq $false) {
+	Write-Host "[Startup]: Enable REST API Debugging Messages?" -ForegroundColor Cyan
+	Write-Host -NoNewLine "[Enter Command (yes|no)]:> "
+	$enable_REST_API_Debugging = Read-Host
+	if ($enable_REST_API_Debugging -eq 'yes') { $Global:REST_API_Debug = $true }
+}
+
+Write-Host "[Startup]: Starting communications..." -ForegroundColor White
 $Global:REST_Server_Running = $false
 REST_Server_Startup
 
@@ -294,13 +308,8 @@ if ($Global:REST_Server_Running) {
 } else {
     Write-Host "[Startup]: HTTP REST Response Server is not running." -ForegroundColor Yellow
 }
-# ask if user wants to enable debugging
-if ($Global:REST_API_Debug -eq $false) {
-	Write-Host "[Startup]: Enable REST API Debugging Messages?" -ForegroundColor Cyan
-	Write-Host -NoNewLine "[Enter Command (yes|no)]:> "
-	$enable_REST_API_Debugging = Read-Host
-	if ($enable_REST_API_Debugging -eq 'yes') { $Global:REST_API_Debug = $true }
-}
+
+
 
 Write-Host "`n[Startup]: Starting main loop..." -ForegroundColor White
 try {
