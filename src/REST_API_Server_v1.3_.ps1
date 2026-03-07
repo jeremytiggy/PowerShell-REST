@@ -149,34 +149,29 @@ Write-Host "[REST_API_Server] function Show-ObjectProperties registered" -Foregr
 Add-Type -AssemblyName System.Net.Http
 Add-Type -AssemblyName System.Web.Extensions
 function REST_Server_Startup {
-    if ($Global:REST_Server_Debug -eq $false) {
-		Write-Host "[REST Server Startup]: Enable Server Debugging Messages?" -ForegroundColor Cyan
-		Write-Host -NoNewLine "[Enter Command (yes|no)]:> "
-		$enableServerDebugging = Read-Host
-		if ($enableServerDebugging -eq 'yes') { $Global:REST_Server_Debug = $true }
-	}
+
 	if ($Global:REST_Server_Debug) {
-		Write-Host "[REST Server Startup]: Port: $($Global:REST_Server_Port)" -ForegroundColor Cyan
-		Write-Host "[REST Server Startup]: URI: $($Global:REST_Server_Uri)" -ForegroundColor Cyan
-		Write-Host "[REST Server Startup]: Process: $($Global:REST_Client_processName)" -ForegroundColor Cyan
-		Write-Host "[REST Server Startup]: appInfo: $($Global:REST_API_appInfo.name) version $($Global:REST_API_appInfo.version) by $($Global:REST_API_appInfo.author)"
+		Write-Host "[REST_Server_Startup]: Port: $($Global:REST_Server_Port)" -ForegroundColor Cyan
+		Write-Host "[REST_Server_Startup]: URI: $($Global:REST_Server_Uri)" -ForegroundColor Cyan
+		Write-Host "[REST_Server_Startup]: Process: $($Global:REST_Client_processName)" -ForegroundColor Cyan
+		Write-Host "[REST_Server_Startup]: appInfo: $($Global:REST_API_appInfo.name) version $($Global:REST_API_appInfo.version) by $($Global:REST_API_appInfo.author)"
 	}
 	
     $ProcessName = $Global:REST_Client_processName
     $processRunning = (Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)
 	if ($Global:REST_Server_Debug) {
-		if ($processRunning) { Write-Host "[REST Server Startup]: $ProcessName is running" -ForegroundColor Green }
-		else { Write-Host "[REST Server Startup]: WARNING - $ProcessName is not running" -ForegroundColor Yellow }	
+		if ($processRunning) { Write-Host "[REST_Server_Startup]: $ProcessName is running" -ForegroundColor Green }
+		else { Write-Host "[REST_Server_Startup]: WARNING - $ProcessName is not running" -ForegroundColor Yellow }	
 	}
 	
     if ($Global:REST_Server_Running -ne $true) {
         if ($processRunning) {
-            Write-Host "[REST Server Startup]: Since $ProcessName is running, it's recommended to start the server to enable connectivity." -ForegroundColor Green
+            Write-Host "[REST_Server_Startup]: Since $ProcessName is running, it's recommended to start the server to enable connectivity." -ForegroundColor Green
         } else {
-            Write-Host "[REST Server Startup]: Since $ProcessName is not running, starting the server may not provide connectivity." -ForegroundColor Yellow
-            Write-Host "[REST Server Startup]: You can still continue in offline mode and enter the Event Data manually."
+            Write-Host "[REST_Server_Startup]: Since $ProcessName is not running, starting the server may not provide connectivity." -ForegroundColor Yellow
+            Write-Host "[REST_Server_Startup]: You can still continue in offline mode and enter the Event Data manually."
         }
-        Write-Host "[REST Server Startup]: Would you like to start the server, or work offline?"
+        Write-Host "[REST_Server_Startup]: Would you like to start the server, or work offline?"
         Write-Host -NoNewLine "[Enter Command (start|offline|exit)]:> "
         $cmd = Read-Host
         if ($cmd -eq '') { exit 1 }
@@ -189,19 +184,19 @@ function REST_Server_Startup {
                 # Start Listener
                 try {
                     $Global:REST_Server_Listener.Start()
-                    if ($Global:REST_Server_Debug) { Write-Host "[REST Server Startup]: Listener started successfully!" -ForegroundColor Green }
+                    if ($Global:REST_Server_Debug) { Write-Host "[REST_Server_Startup]: Listener started successfully!" -ForegroundColor Green }
                 } catch {
-                    Write-Host "[REST Server Startup]: FAULT - Failed to start: $($_.Exception.Message)" -ForegroundColor Red
+                    Write-Host "[REST_Server_Startup]: FAULT - Failed to start: $($_.Exception.Message)" -ForegroundColor Red
                     exit 1
                 }
                 # Server Running Flags
                 $Global:REST_Server_Running = $true                
             }
             elseif ($cmd -eq 'offline') { 
-                Write-Host "[REST Server Startup]: Continuing in offline mode. No $ProcessName connectivity." -ForegroundColor Yellow
+                Write-Host "[REST_Server_Startup]: Continuing in offline mode. No $ProcessName connectivity." -ForegroundColor Yellow
             }
 	        else { 
-                Write-Host '[REST Server Startup]: Exiting...' -ForegroundColor Yellow
+                Write-Host '[REST_Server_Startup]: Exiting...' -ForegroundColor Yellow
                 exit 1
             }
         } # end processing user choice
