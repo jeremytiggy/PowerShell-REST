@@ -61,15 +61,17 @@ $Global:REST_API_Actions = @{
     }
 }
 
+
 $Global:REST_API_JSON_ExecuteThirdPartyAction = @'
 {
-  "categoryId": "categoryId",
-  "actionId": "actionId",
+  "categoryId": "categoryId_string",
+  "actionId": "actionId_string",
   "context": {
     "applicationData": "applicationData"
   }
 }
 '@
+
 
 Write-Host "[REST_API_Server] Action Categories & Definitions registered. May be overwritten." -ForegroundColor Yellow
 # REST API Data Definitions for Actions ^^^^^^^^^^^^^^^^
@@ -77,17 +79,23 @@ Write-Host "[REST_API_Server] Action Categories & Definitions registered. May be
 # Put your code that performs your desired activity for this plug-in
 function REST_API_Application-Specific-Action {
 	#Overwrite this function with your own function to execute when a valid REST action is received
-	#Example:
-	if ($null -ne $Global:REST_API_clientActionData.context.applicationData) {
-		$Global:REST_API_Action_applicationData = $Global:REST_API_clientActionData.context.applicationData
-		Write-Host "[REST_API_Application-Specific-Action]: applicationData: $($Global:REST_API_Action_applicationData)"
-	}
+	#In this base example, a global variable string containing placeholders has them replaced with data received from the client during action execution request
+	$Global:REST_API_JSON_selectedClientActionData_Placeholders = "Category ID: {{categoryId}}; Action ID: {{actionId}}"
+	
+	if ($Global:REST_API_JSON_selectedClientActionData_Placeholders -ne $null) {
+		$string_with_clientActionData_placeholders = $Global:REST_API_JSON_selectedClientActionData_Placeholders
+		$string_with_clientActionData = Replace-PlaceholdersWithValues -stringContainingPlaceholders $string_with_clientActionData_placeholders -objectWithValues $Global:REST_API_clientActionData
+		$Global:REST_API_JSON_selectedClientActionData_string = $string_with_clientActionData
+		#$Global:REST_API_JSON_selectedClientActionData_string = "Category ID: categoryId_string; Action ID: actionId_string"	
+		
+	} else { $Global:REST_API_JSON_selectedClientActionData_string = "empty" }
+	if ($Global:REST_API_Debug) { Write-Host "[REST_API_Application-Specific-Action]: DEBUG -  $($Global:REST_API_JSON_selectedClientActionData_string)" }
 	
 	$Global:REST_API_Action_ApplicationDataAvailable = $true
 }
 Write-Host "[REST_API_Server] REST_API_Application-Specific-Action registered. May be overwritten." -ForegroundColor Yellow
 # Windows HTTP REST Server Setup ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-# Important Global Parameters
+# Important REST Parameters
 $Global:REST_Server_Running = $false 		# Server Status
 $Global:REST_Server_Listener = $null				# HTTP Handler Object
 $Global:REST_Server_Debug = $false
@@ -99,10 +107,165 @@ $Global:REST_API_Action_Category = $null
 $Global:REST_API_Action_ApplicationDataAvailable = $false
 $Global:REST_API_Action_Executed = $false
 $Global:REST_API_Debug = $true
+$Global:REST_API_Action_applicationData_placeholder_Regex = '\{\{([a-zA-Z0-9_.]+)\}\}'
 # USER AND APPLICATION SPECIFIC DATA ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
 # Helper Functions ---------------------
+function Replace-MemberPlaceholdersWithJsonData {
+
+    param(
+        [string]$TemplateString,
+        [string]$JsonString
+    )
+
+    # Add error handling for invalid JSON
+	$jsonObject = try { 
+        $JsonString | ConvertFrom-Json 
+    } catch {
+        Write-Error "[Replace-MemberPlaceholdersWithJsonData] FAULT: Invalid JSON provided: $_"
+        return $TemplateString
+    }
+
+    $outputTextWithReplacements = $TemplateString
+
+    # Find placeholders such as {{field_A}} or {{context.field_E}}
+    $placeholderMatchesFoundInTemplate = [regex]::Matches($TemplateString,$Global:REST_API_Action_applicationData_placeholder_Regex)
+
+    foreach ($placeholder in $placeholderMatchesFoundInTemplate) {
+
+        # Extract the JSON location from inside the placeholder.
+        # Example:
+        #     {{context.member1}}
+        # points to:
+        # {
+		#	"categoryId": "categoryId",
+		#	"actionId": "actionId",
+		#	"context": {
+		#		"member1" = "data"      <---
+		#	}
+		# }
+		# $placeholder.Groups[0].Value = {{context.member1}}
+		# $placeholder.Groups[1].Value =   context.member1
+		# context.member1 = "data"
+		# return "data"
+        $placeholderJsonLocation = $placeholder.Groups[1].Value 
+        $placeholderValueFromJsonData = Get-ValueFromJsonDataStructure -JsonObject $jsonObject -JsonDataLocation $placeholderJsonLocation
+        if ($placeholderValueFromJsonData -ne $null) {
+            $outputTextWithReplacements = $outputTextWithReplacements.Replace($placeholder.Value, [string]$placeholderValueFromJsonData)
+        }
+    }
+
+    return $outputTextWithReplacements
+}
+Write-Host "[REST_API_Server] function Get-ValueFromJsonDataStructure registered" -ForegroundColor Green
+function Get-ValueFromJsonDataStructure {
+
+    param(
+        $JsonObject,
+        [string]$JsonDataLocation
+    )
+	if ( ($JsonObject -eq $null) -or ($JsonDataLocation -eq "") ) { 
+		if ($Global:REST_API_Debug) { Write-Host "[Get-ValueFromJsonDataStructure] FAULT: Empty Input" -ForegroundColor Red}
+		return $null }
+	
+    $currentLocationInJsonData = $JsonObject
+
+    # Split the JSON data location such as:
+    #   context.field_E
+    # into individual property names:
+    # {context, field_E}
+	# Then, after finding the property using the name, isolate each property down into it's own object.
+	# Keep going down until it runs out of names
+    $jsonDataPropertyNames = $JsonDataLocation.Split(".")
+
+    foreach ($jsonPropertyName in $jsonDataPropertyNames) {
+
+        if ($currentLocationInJsonData -eq $null) {
+            if ($Global:REST_API_Debug) { Write-Host "[Get-ValueFromJsonDataStructure] FAULT: Property doesn't have any valid data" -ForegroundColor Red}
+			return $null
+        }
+
+        $property = $currentLocationInJsonData.PSObject.Properties[$jsonPropertyName]
+
+        if ($property -eq $null) {
+            if ($Global:REST_API_Debug) { Write-Host "[Get-ValueFromJsonDataStructure] FAULT: Property not found: $($jsonPropertyName)" -ForegroundColor Red}
+			return $null
+        }
+
+        $currentLocationInJsonData = $property.Value
+    }
+	if ($Global:REST_API_Debug) { Write-Host "[Get-ValueFromJsonDataStructure] DEBUG: $jsonDataPropertyNames = $currentLocationInJsonData" -ForegroundColor Red}
+    return $currentLocationInJsonData
+}
+Write-Host "[REST_API_Server] function Get-ValueFromJsonDataStructure registered" -ForegroundColor Green
+function Replace-PlaceholdersWithValues {
+
+    param(
+        [string]$stringContainingPlaceholders,
+        $objectWithValues
+    )
+
+    $workingText = $stringContainingPlaceholders
+
+    # Find placeholders
+    $placeholdersFromInput = [regex]::Matches($stringContainingPlaceholders, $Global:REST_API_Action_applicationData_placeholder_Regex)
+
+    foreach ($placeholder in $placeholdersFromInput) {
+        $placeholderObjectMemberName = $placeholder.Groups[1].Value         
+        $placeholderValueFromObject = Get-MemberValueFromUnknownObject -objectWithUnknownMembers $objectWithValues -targetMember_nameString $placeholderObjectMemberName           
+        if ($null -ne $placeholderValueFromObject) {
+            $workingText = $workingText.Replace($placeholder.Value, [string]$placeholderValueFromObject)
+        }
+    }
+    $outputTextWithValues = $workingText
+    return $outputTextWithValues
+}
+Write-Host "[REST_API_Server] function Replace-PlaceholdersWithValues registered" -ForegroundColor Green
+function Get-MemberValueFromUnknownObject {
+
+    param(
+        $objectWithUnknownMembers,
+        [string]$targetMember_nameString
+    )
+	if ( ($objectWithUnknownMembers -eq $null) -or ($targetMember_nameString -eq "") ) { 
+		if ($Global:REST_API_Debug) { Write-Host "[Get-MemberValueFromUnknownObject] FAULT: Empty Input" -ForegroundColor Red}
+		return $null }
+	
+    $object_targetMember = $objectWithUnknownMembers
+
+    # Split the data location such as:
+    #   context.subcontext.dataItem
+    # into individual property names:
+    # {context, subcontext, dataItem}
+	# Then, after finding the property using the name, isolate each property down into it's own object.
+	# Keep going down until it runs out of names
+    $targetMember_andParentNames = $targetMember_nameString.Split(".")
+
+    foreach ($propertyName in $targetMember_andParentNames) {
+
+        if ($object_targetMember -eq $null) {
+            if ($Global:REST_API_Debug) { Write-Host "[Get-MemberValueFromUnknownObject] FAULT: Property doesn't have any valid data" -ForegroundColor Red}
+			return $null
+        }
+		try {
+			$property = $object_targetMember.PSObject.Properties[$propertyName]
+		} catch {
+			if ($Global:REST_API_Debug) { Write-Host "[Get-MemberValueFromUnknownObject] FAULT: Input is not a usable Object" -ForegroundColor Red}
+			return $null
+		}
+        if ($property -eq $null) {
+            if ($Global:REST_API_Debug) { Write-Host "[Get-MemberValueFromUnknownObject] FAULT: Property not found: $($propertyName)" -ForegroundColor Red}
+			return $null
+        }
+		# If this is the end of the address, it will return the value.
+		# Otherwise, it will start over from this tree level and dig deeper
+        $object_targetMember = $property.Value 
+    }
+	if ($Global:REST_API_Debug) { Write-Host "[Get-MemberValueFromUnknownObject] DEBUG: $targetMember_nameString = $object_targetMember" -ForegroundColor Green}
+    return $object_targetMember
+}
+Write-Host "[REST_API_Server] function Get-MemberValueFromUnknownObject registered" -ForegroundColor Green
 function Show-ObjectProperties {
     param(
         [Parameter(Mandatory)]
@@ -423,7 +586,8 @@ function REST_API_Handle-Request {
             if ($Global:REST_API_Debug) { Write-Host "[REST_API_Handle-Request]: DEBUG - Execute Action Requested" -ForegroundColor Gray }
             if ($method -eq "POST") {
                 try {
-                    $Global:REST_API_clientActionData = $body | ConvertFrom-Json
+					$Global:REST_API_clientActionJson = $body
+					$Global:REST_API_clientActionData = $body | ConvertFrom-Json
                     REST_Server_Send-JSONResponse -Response $response -Data @()
 					if ($Global:REST_API_Debug) { Write-Host "[REST_API_Handle-Request]: DEBUG - Action Data Received." -ForegroundColor Gray }
 					REST_API_Process-clientActionData
@@ -450,12 +614,27 @@ function REST_Server_Wait-For-Request {
 	if ($Global:REST_Server_Running) {
 		Write-Host "[REST_Server_Wait-For-Request]: BLOCKING - Waiting for incoming HTTP requests..." -ForegroundColor Magenta
 		$context = $Global:REST_Server_Listener.GetContext()  # Blocking call
+		if ($Global:REST_Server_Debug) { Write-Host "[REST_Server_Wait-For-Request]: DEBUG - Request Detected" -ForegroundColor White }
 		REST_API_Handle-Request -Context $context
 	} else { 
 		Write-Host "[REST_Server_Wait-For-Request]: WARNING - Server not running." -ForegroundColor Yellow
 	}
 }
 Write-Host "[REST_API_Server] function REST_Server_Wait-For-Request registered" -ForegroundColor Green
+function REST_Server_Handle-Pending-Request {
+	if ($Global:REST_Server_Running) {
+		# Non-Blocking Call
+		if ( $Global:REST_Server_Listener.Pending() ) {
+			if ($Global:REST_Server_Debug) { Write-Host "[REST_Server_Handle-Pending-Request]: DEBUG - Request Detected" -ForegroundColor White }
+			$context = $Global:REST_Server_Listener.GetContext()
+			REST_API_Handle-Request -Context $context
+		}		
+	} else { 
+		Write-Host "[REST_Server_Handle-Pending-Request]: WARNING - Server not running." -ForegroundColor Yellow
+	}
+}
+Write-Host "[REST_API_Server] function REST_Server_Handle-Pending-Request registered" -ForegroundColor Green
+
 function REST_API_SERVER_LibraryLoaded {
     Write-Host "[REST_API_SERVER] Library Loaded and functional" -ForegroundColor Gray
 }
