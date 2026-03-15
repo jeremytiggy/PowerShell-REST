@@ -5,41 +5,45 @@ function Get-LatestVersionedScript {
         [Parameter(Mandatory)]
         [string]$BaseName,
 
-        [string]$Path = "."
+        [string[]]$Path = @(".", ".\lib")
     )
 
-    Write-Verbose "Searching for latest version of $BaseName in '$Path'"
+    foreach ($currentPath in $Path) {
 
-    $pattern = "${BaseName}_v*.ps1"
+        Write-Verbose "Searching for latest version of $BaseName in '$currentPath'"
 
-    # Try versioned files first
-    $scripts = Get-ChildItem -Path $Path -Filter $pattern -File -ErrorAction SilentlyContinue
+        $pattern = "${BaseName}_v*.ps1"
 
-    if ($scripts) {
+        # Try versioned files first
+        $scripts = Get-ChildItem -Path $currentPath -Filter $pattern -File -ErrorAction SilentlyContinue
 
-        $latest = $scripts |
-            Sort-Object {
-                if ($_.Name -match 'v(\d+(\.\d+)+)') {
-                    [version]$matches[1]
-                }
-                else {
-                    [version]"0.0"
-                }
-            } -Descending |
-            Select-Object -First 1
+        if ($scripts) {
 
-        return $latest
+            $latest = $scripts |
+                Sort-Object {
+                    if ($_.Name -match 'v(\d+(\.\d+)+)') {
+                        [version]$matches[1]
+                    }
+                    else {
+                        [version]"0.0"
+                    }
+                } -Descending |
+                Select-Object -First 1
+
+            return $latest
+        }
+
+        # Fallback to non-versioned file
+        $baseFile = Join-Path $currentPath "${BaseName}.ps1"
+
+        if (Test-Path $baseFile) {
+            return Get-Item $baseFile
+        }
     }
 
-    # Fallback to non-versioned file
-    $baseFile = Join-Path $Path "${BaseName}.ps1"
-
-    if (Test-Path $baseFile) {
-        return Get-Item $baseFile
-    }
-
-    throw "No matching versioned or base script found for '$BaseName' in '$Path'."
+    throw "No matching versioned or base script found for '$BaseName' in paths: $($Path -join ', ')"
 }
+
 # Include library REST Server
 # Include REST_API_Server.ps1 pipe communication functions and variables
 try {
@@ -90,14 +94,14 @@ $Global:REST_API_Actions = @{
         actions = @{
             cat1action1 = @{
                 actionId    = "cat1action1"
-                actionName  = "Gift under or 100 coins"
-				applicationData = "Thank you for the Small gift"
+                actionName  = "Gift with Coins"
+				applicationData = "Thank you for the gift of {{context.coins}} coins, {{context.nickname}}!"
             }
 
             cat1action2 = @{
                 actionId    = "cat1action2"
                 actionName  = "Gift over 100 coins"
-				applicationData = "Thank you for the Generous gift"
+				applicationData = "OMG! @{{context.username}}! {{context.coins}} is too much!"
             }
         }
     }
@@ -146,23 +150,40 @@ function REST_API_Application-Specific-Action {
 	#Overwrite this function with your own function to execute when a valid REST action is received
 	#Print a thank you message to the user 
 	#Tikfinity has a known Events JSON
-	$Global:CV_s_TF_CategoryID = $Global:REST_API_Action_categoryId
-	$Global:CV_s_TF_actionID = $Global:REST_API_Action_actionId
-	$Global:CV_s_TF_userID = $Global:REST_API_clientActionData.context.userID
-	$Global:CV_s_TF_username = $Global:REST_API_clientActionData.context.username
-	$Global:CV_s_TF_nickname = $Global:REST_API_clientActionData.context.nickname
-	$Global:CV_s_TF_profilePictureUrl = $Global:REST_API_clientActionData.context.profilePictureUrl
-	$Global:CV_n_TF_coins = [int]$Global:REST_API_clientActionData.context.coins
-	$Global:CV_n_TF_triggerTypeId = [int]$Global:REST_API_clientActionData.context.triggerTypeId
-	$Global:CV_n_TF_tikfinityUserId = [int]$Global:REST_API_clientActionData.context.tikfinityUserId
-	$Global:CV_s_TF_tikfinityUsername = $Global:REST_API_clientActionData.context.tikfinityUsername
+	$tikfinity_ExecuteAction = $Global:REST_API_clientActionData
+	if ($Global:REST_API_Debug) { 
+		Write-Host "[REST_API_Application-Specific-Action]: DEBUG - printing tikfinity_ExecuteAction" -ForegroundColor Gray 
+		Show-ObjectProperties -Obj $tikfinity_ExecuteAction
+	}
+	$Global:CV_s_TF_CategoryID = $tikfinity_ExecuteAction.categoryId
+	$Global:CV_s_TF_actionID = $tikfinity_ExecuteAction.actionId
+
+	$Global:CV_s_TF_username = $tikfinity_ExecuteAction.context.username
+	$Global:CV_s_TF_nickname = $tikfinity_ExecuteAction.context.nickname
+	$Global:CV_n_TF_coins = [int]$tikfinity_ExecuteAction.context.coins
+	#$Global:CV_n_TF_triggerTypeId = [int]$Global:REST_API_clientActionData.context.triggerTypeId
+	$Global:CV_n_TF_triggerTypeId = Get-MemberValueFromUnknownObject -objectWithUnknownMembers $tikfinity_ExecuteAction -targetMember_nameString "context.triggerTypeId"
+	<#
+	triggerTypeId detail
+	1 = Share
+	2 = Command
+	3 = Gift (min coins value)
+	4 = Gift (specific gift)
+	6 = Join
+	7 = Likes (taps)
+	9 = Follow
+	10 = Subscribe
+	11 = Chat (any message)
+	12 = Emote
+	13 = First User Activity
+	#>
 
 	$Global:REST_API_Action_ApplicationDataAvailable = $true
 	
-	$scriptOutput = $Global:REST_API_Actions[$Global:REST_API_Action_categoryId].actions[$Global:REST_API_Action_actionId].applicationData
-	$Global:CV_s_API_scriptOutput = $scriptOutput
-	Write-Host "[REST_API_Application-Specific-Action] Hello, $($Global:CV_s_TF_userID) . $($Global:CV_s_API_scriptOutput)"
-	
+	$screenMessageWithPlaceholders = $Global:REST_API_Action.applicationData
+	if ($Global:REST_API_Debug) { Write-Host "[REST_API_Application-Specific-Action]: DEBUG - screen message with placeholders: $($screenMessageWithPlaceholders)" -ForegroundColor Gray }
+	$screenMessage = Replace-PlaceholdersWithValues -stringContainingPlaceholders $screenMessageWithPlaceholders -objectWithValues $tikfinity_ExecuteAction
+	Write-Host "[REST_API_Application-Specific-Action] $($screenMessage)"
 }
 Write-Host "[REST_API_Server] REST_API_Application-Specific-Action registered. May be overwritten." -ForegroundColor Yellow
 # Windows HTTP REST Server Setup ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
