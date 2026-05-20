@@ -582,7 +582,7 @@ function REST_API_Handle-Request {
                     return
                 }
                 
-                if (-not $Global:REST_API_Actions.ContainsKey($categoryId)) {
+                if (-not $Global:REST_API_Actions.Contains($categoryId)) {
                     REST_Server_Send-JSONResponse -Response $response -Data @() -Message "Category not found"
                     return
                 }
